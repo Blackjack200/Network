@@ -19,7 +19,7 @@ subprojects {
     apply(plugin = "maven-publish")
     apply(plugin = "signing")
 
-    group = "org.cloudburstmc.netty"
+    group = "com.github.Blackjack200.Network"
     version = rootProject.property("version") as String
 
     repositories {
