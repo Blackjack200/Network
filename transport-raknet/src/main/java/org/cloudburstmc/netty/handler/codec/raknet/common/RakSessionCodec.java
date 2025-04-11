@@ -556,6 +556,9 @@ public class RakSessionCodec extends ChannelDuplexHandler {
         int transmissionBandwidth = this.slidingWindow.getRetransmissionBandwidth();
 
         for (RakDatagramPacket datagram : this.sentDatagrams.values()) {
+            if (datagram == null) {
+                continue;
+            }
             if (datagram.getNextSend() <= curTime) {
                 int size = datagram.getSize();
                 if (transmissionBandwidth < size) {
