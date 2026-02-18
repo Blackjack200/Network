@@ -80,6 +80,8 @@ public class RakSessionCodec extends ChannelDuplexHandler {
     private Queue<IntRange> outgoingNaks;
     private long lastMinWeight;
 
+    private int queuedBytes = 0;
+
     public RakSessionCodec(RakChannel channel) {
         this.channel = channel;
         this.setState(RakState.UNCONNECTED);
@@ -170,6 +172,8 @@ public class RakSessionCodec extends ChannelDuplexHandler {
             }
             outgoingPackets.release();
         }
+
+        this.queuedBytes = 0;
 
         if (log.isTraceEnabled()) {
             log.trace("RakNet Session ({} => {}) closed!", this.channel.localAddress(), this.getRemoteAddress());
@@ -263,8 +267,12 @@ public class RakSessionCodec extends ChannelDuplexHandler {
         long weight = this.getNextWeight(message.priority());
         if (packets.length == 1) {
             this.outgoingPackets.insert(weight, packets[0]);
+            this.queuedBytes += packets[0].getBuffer().readableBytes();
         } else {
             this.outgoingPackets.insertSeries(weight, packets);
+            for (EncapsulatedPacket packet : packets) {
+                this.queuedBytes += packet.getBuffer().readableBytes();
+            }
         }
     }
 
@@ -420,22 +428,14 @@ public class RakSessionCodec extends ChannelDuplexHandler {
 
         int maxQueuedBytes = this.channel.config().getOption(RakChannelOption.RAK_MAX_QUEUED_BYTES);
 
-        if (maxQueuedBytes > 0) {
-            int queuedBytes = 0;
-            try {
-                for (EncapsulatedPacket packet : this.outgoingPackets) {
-                    queuedBytes += packet.getBuffer().readableBytes();
-                    if (queuedBytes > maxQueuedBytes) {
-                        this.disconnect(RakDisconnectReason.QUEUE_TOO_LONG);
-                        return;
-                    }
-                }
-            } finally {
-                RakChannelMetrics metrics = this.getMetrics();
-                if (metrics != null) {
-                    metrics.queuedPacketBytes(queuedBytes);
-                }
-            }
+        if (maxQueuedBytes > 0 && this.queuedBytes > maxQueuedBytes) {
+            this.disconnect(RakDisconnectReason.QUEUE_TOO_LONG);
+            return;
+        }
+
+        RakChannelMetrics metrics = this.getMetrics();
+        if (metrics != null) {
+            metrics.queuedPacketBytes(this.queuedBytes);
         }
 
         if (this.state == RakState.UNCONNECTED) {
@@ -591,7 +591,7 @@ public class RakSessionCodec extends ChannelDuplexHandler {
         }
 
         if (hasResent) {
-            this.slidingWindow.onResend(curTime);
+            this.slidingWindow.onResend(this.datagramWriteIndex);
         }
 
         return resendCount;
@@ -615,6 +615,7 @@ public class RakSessionCodec extends ChannelDuplexHandler {
 
             transmissionBandwidth -= size;
             this.outgoingPackets.remove();
+            this.queuedBytes -= packet.getBuffer().readableBytes();
 
             // Send full datagram
             if (!datagram.tryAddPacket(packet, mtuSize)) {
