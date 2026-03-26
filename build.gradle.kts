@@ -29,10 +29,14 @@ subprojects {
 
     configure<JavaPluginExtension> {
         toolchain {
-            languageVersion.set(JavaLanguageVersion.of(8))
+            languageVersion.set(JavaLanguageVersion.of(21))
         }
         withJavadocJar()
         withSourcesJar()
+    }
+
+    tasks.withType<JavaCompile> {
+        options.release.set(8)
     }
 
     configure<PublishingExtension> {
