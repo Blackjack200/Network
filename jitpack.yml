@@ -1,4 +1,8 @@
 jdk: openjdk17
 
+env:
+  - MYPROJECT_ROOT=$PWD
+
 install:
-  - ./gradlew publishToMavenLocal -x test
+  - ./gradlew clean build -x test --stacktrace
+  - cd transport-raknet && ls -la build/libs/
